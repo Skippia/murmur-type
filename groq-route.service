@@ -1,0 +1,12 @@
+[Unit]
+Description=Add direct routes for Groq API (bypass VPN)
+After=network-online.target windscribe-helper.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/skippia/_global-scripts_/voice-type/groq-route.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,11 @@
+{
+  "provider": "groq",
+  "api_key": "gsk_YOUR_GROQ_API_KEY_HERE",
+  "model": "whisper-large-v3",
+  "language": "",
+  "translate_model": "llama-3.3-70b-versatile",
+  "app_url": "http://localhost:3009",
+  "app_login": "",
+  "app_password": "",
+  "app_topic_id": ""
+}
