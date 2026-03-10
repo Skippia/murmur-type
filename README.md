@@ -138,10 +138,7 @@ Edit `config.json`:
 |-------|-------------|
 | `language` | Default language hint. Leave `""` for auto-detect, or set `"en"`, `"ru"`, `"uk"`, etc. |
 | `translate_model` | LLM for translation. Default: `"llama-3.3-70b-versatile"` |
-| `app_url` | Backend URL for vocabulary integration (optional) |
-| `app_login` | Login for vocabulary app (optional) |
-| `app_password` | Password for vocabulary app (optional) |
-| `app_topic_id` | UUID of the vocabulary topic to save cards to (optional) |
+| `webhook` | Webhook config for saving translations (optional, see [Webhook Integration](#webhook-integration)) |
 
 ## Keybindings
 
@@ -226,30 +223,109 @@ voice-type/
 │   ├── recording.pid      # PID of pw-record process
 │   ├── recording.wav      # Temporary audio file
 │   ├── mode               # Current recording mode
-│   └── app_token          # Cached JWT token for app API
+│   └── app_token          # Cached auth token (if webhook uses auth)
 └── README.md
 ```
 
-## Vocabulary Integration (Optional)
+## Webhook Integration
 
-If you have a REST API backend for vocabulary flashcards (e.g., a NestJS app), voice-type can save translated words as cards.
+When using the translate mode (Mod+Shift+A), pressing **Enter** in the rofi popup can send the word and translation to any HTTP endpoint. This lets you integrate with flashcard apps, Notion, Anki, Google Sheets, or any service with a REST API.
 
-Configure these fields in `config.json`:
+Set `"webhook": null` (or omit it) to disable — the rofi popup will still work, just without saving.
+
+### Basic webhook (no auth)
+
+Send a POST request with the word and translation to any URL:
 
 ```json
 {
-  "app_url": "http://localhost:3009",
-  "app_login": "your_login",
-  "app_password": "your_password",
-  "app_topic_id": "uuid-of-your-topic"
+  "webhook": {
+    "url": "https://your-app.com/api/words",
+    "body": {
+      "word": "{{word}}",
+      "translation": "{{translation}}"
+    }
+  }
 }
 ```
 
-The app API must support:
-- `POST /api/auth/login` — returns `{ data: { token: "jwt..." } }`
-- `POST /api/vocabulary/words` — creates a card with `{ topicId, word, translation }`
+`{{word}}` and `{{translation}}` are placeholders — they get replaced with the actual values at runtime.
 
-Leave these fields empty to use voice-type without vocabulary integration.
+### Webhook with static headers
+
+If your API uses an API key or static token:
+
+```json
+{
+  "webhook": {
+    "url": "https://your-app.com/api/words",
+    "headers": {
+      "X-Api-Key": "your-api-key",
+      "Authorization": "Bearer your-static-token"
+    },
+    "body": {
+      "word": "{{word}}",
+      "translation": "{{translation}}"
+    }
+  }
+}
+```
+
+### Webhook with JWT login flow
+
+If your API requires logging in first to get a JWT token:
+
+```json
+{
+  "webhook": {
+    "url": "https://your-app.com/api/words",
+    "body": {
+      "topicId": "some-category-id",
+      "word": "{{word}}",
+      "translation": "{{translation}}"
+    },
+    "auth": {
+      "url": "https://your-app.com/api/auth/login",
+      "body": {
+        "login": "your-username",
+        "password": "your-password"
+      },
+      "token_path": "data.token"
+    }
+  }
+}
+```
+
+How the auth flow works:
+
+1. On first request, voice-type sends a POST to `auth.url` with `auth.body`
+2. Extracts the JWT token from the response using `token_path` (dot notation — e.g., `"data.token"` extracts `response.data.token`)
+3. Adds `Authorization: Bearer <token>` to the webhook request
+4. Caches the token in `.run/app_token` so subsequent calls skip the login
+5. If the webhook returns 401 (token expired), automatically re-authenticates and retries once
+
+### Custom body fields
+
+The `body` object can contain any structure your API expects. Only `{{word}}` and `{{translation}}` are replaced — everything else is sent as-is:
+
+```json
+{
+  "webhook": {
+    "url": "https://api.notion.com/v1/pages",
+    "headers": {
+      "Notion-Version": "2022-06-28",
+      "Authorization": "Bearer ntn_your_token"
+    },
+    "body": {
+      "parent": { "database_id": "abc123" },
+      "properties": {
+        "Word": { "title": [{ "text": { "content": "{{word}}" } }] },
+        "Translation": { "rich_text": [{ "text": { "content": "{{translation}}" } }] }
+      }
+    }
+  }
+}
+```
 
 ## Troubleshooting
 

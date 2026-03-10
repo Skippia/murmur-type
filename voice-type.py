@@ -34,11 +34,19 @@ DEFAULT_CONFIG = {
     "model": "whisper-large-v3",
     "language": "",
     "translate_model": "llama-3.3-70b-versatile",
-    "app_url": "http://localhost:3009",
-    "app_login": "",
-    "app_password": "",
-    "app_topic_id": "",
+    "webhook": None,
 }
+# Webhook config shape:
+# {
+#   "url": "https://example.com/api/words",
+#   "headers": { "X-Api-Key": "..." },
+#   "body": { "word": "{{word}}", "translation": "{{translation}}" },
+#   "auth": {                          ← optional, for JWT login flow
+#     "url": "https://example.com/api/auth/login",
+#     "body": { "login": "user", "password": "pass" },
+#     "token_path": "data.token"       ← dot-notation path to extract JWT
+#   }
+# }
 
 
 def load_config():
@@ -359,11 +367,20 @@ def show_translation_rofi(russian_text, data):
     return result.returncode == 0
 
 
-# ── App auth & vocabulary card creation ───────────────────────────────────────
+# ── Webhook integration ───────────────────────────────────────────────────────
 
-def get_app_token(config):
-    """Login to app and cache JWT token."""
-    # Check cached token
+def _resolve_json_path(data, path):
+    """Extract a value from nested dict using dot notation (e.g. 'data.token')."""
+    for key in path.split("."):
+        if isinstance(data, dict):
+            data = data.get(key)
+        else:
+            return None
+    return data
+
+
+def _webhook_auth(auth_cfg):
+    """Authenticate via login endpoint and return Bearer token. Caches to TOKEN_FILE."""
     try:
         token = open(TOKEN_FILE).read().strip()
         if token:
@@ -371,14 +388,10 @@ def get_app_token(config):
     except FileNotFoundError:
         pass
 
-    # Login
-    payload = json.dumps({
-        "login": config["app_login"],
-        "password": config["app_password"],
-    }).encode()
+    payload = json.dumps(auth_cfg.get("body", {})).encode()
 
     req = urllib.request.Request(
-        config["app_url"] + "/api/auth/login",
+        auth_cfg["url"],
         data=payload,
         headers={"Content-Type": "application/json"},
         method="POST",
@@ -387,65 +400,87 @@ def get_app_token(config):
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
             result = json.loads(resp.read())
-            token = result["data"]["token"]
-            with open(TOKEN_FILE, "w") as f:
-                f.write(token)
-            return token
+            token_path = auth_cfg.get("token_path", "token")
+            token = _resolve_json_path(result, token_path)
+            if token:
+                with open(TOKEN_FILE, "w") as f:
+                    f.write(str(token))
+                return token
+            notify("Webhook auth: token not found in response", "critical")
+            return None
     except Exception as e:
-        notify(f"App login failed: {e}", "critical")
+        notify(f"Webhook auth failed: {e}", "critical")
         return None
 
 
-def create_vocabulary_card(config, english_word, russian_text):
-    """Create a vocabulary card via the app API. Backend auto-generates contexts, CEFR, domains."""
-    token = get_app_token(config)
-    if not token:
+def _build_webhook_body(template, word, translation):
+    """Replace {{word}} and {{translation}} placeholders in webhook body template."""
+    def replace_value(v):
+        if isinstance(v, str):
+            return v.replace("{{word}}", word).replace("{{translation}}", translation)
+        if isinstance(v, dict):
+            return {k: replace_value(val) for k, val in v.items()}
+        if isinstance(v, list):
+            return [replace_value(item) for item in v]
+        return v
+    return replace_value(template)
+
+
+def fire_webhook(config, word, translation):
+    """Send word + translation to configured webhook. Returns True on success."""
+    wh = config.get("webhook")
+    if not wh or not wh.get("url"):
         return False
 
-    body = {
-        "topicId": config["app_topic_id"],
-        "word": english_word,
-        "translation": russian_text,
-    }
+    headers = {"Content-Type": "application/json"}
+    headers.update(wh.get("headers", {}))
 
+    # Optional auth flow
+    auth_cfg = wh.get("auth")
+    if auth_cfg and auth_cfg.get("url"):
+        token = _webhook_auth(auth_cfg)
+        if not token:
+            return False
+        headers["Authorization"] = f"Bearer {token}"
+
+    body_template = wh.get("body", {"word": "{{word}}", "translation": "{{translation}}"})
+    body = _build_webhook_body(body_template, word, translation)
     payload = json.dumps(body).encode()
 
     req = urllib.request.Request(
-        config["app_url"] + "/api/vocabulary/words",
-        data=payload,
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-        },
-        method="POST",
+        wh["url"], data=payload, headers=headers, method="POST",
     )
 
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
-            json.loads(resp.read())
+            resp.read()
             return True
     except urllib.error.HTTPError as e:
         # Token expired — clear cache and retry once
-        if e.code == 401:
+        if e.code == 401 and auth_cfg:
             try:
                 os.remove(TOKEN_FILE)
             except FileNotFoundError:
                 pass
-            token = get_app_token(config)
+            token = _webhook_auth(auth_cfg)
             if not token:
                 return False
-            req.add_header("Authorization", f"Bearer {token}")
+            req = urllib.request.Request(
+                wh["url"], data=payload,
+                headers={**headers, "Authorization": f"Bearer {token}"},
+                method="POST",
+            )
             try:
                 with urllib.request.urlopen(req, timeout=10) as resp:
-                    json.loads(resp.read())
+                    resp.read()
                     return True
             except Exception:
                 pass
         err_body = e.read().decode(errors="replace")[:200]
-        notify(f"Card creation failed: {err_body}", "critical")
+        notify(f"Webhook failed: {err_body}", "critical")
         return False
     except Exception as e:
-        notify(f"Card creation failed: {e}", "critical")
+        notify(f"Webhook failed: {e}", "critical")
         return False
 
 
@@ -504,10 +539,9 @@ def main():
                 english_word = data.get("word", "")
                 user_wants_save = show_translation_rofi(text, data)
 
-                if user_wants_save and config.get("app_topic_id"):
-                    notify("Saving card...", "low")
-                    # Only send word + translation; backend generates its own contexts
-                    ok = create_vocabulary_card(config, english_word.lower(), text)
+                if user_wants_save and config.get("webhook"):
+                    notify("Saving...", "low")
+                    ok = fire_webhook(config, english_word.lower(), text)
                     if ok:
                         notify(f"Card saved: {english_word}", "low")
             else:
