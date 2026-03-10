@@ -4,13 +4,13 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BIN_DIR="${HOME}/.local/bin"
 
-echo "=== voice-type installer ==="
+echo "=== murmur-type installer ==="
 echo ""
 
 # 1. Symlink to PATH
 mkdir -p "$BIN_DIR"
-ln -sf "$SCRIPT_DIR/voice-type.py" "$BIN_DIR/voice-type"
-echo "[+] Symlinked voice-type → $BIN_DIR/voice-type"
+ln -sf "$SCRIPT_DIR/murmur-type.py" "$BIN_DIR/murmur-type"
+echo "[+] Symlinked murmur-type → $BIN_DIR/murmur-type"
 
 # 2. Create config from template if not exists
 if [ ! -f "$SCRIPT_DIR/config.json" ]; then
@@ -53,9 +53,9 @@ echo ""
 echo "=== Keybindings ==="
 echo "Add these to your Wayland compositor config (niri/sway/hyprland):"
 echo ""
-echo "  Mod+Shift+E → voice-type en        (voice → type English)"
-echo "  Mod+Shift+R → voice-type ru        (voice → type Russian)"
-echo "  Mod+Shift+A → voice-type translate  (voice → translate RU→EN popup)"
+echo "  Mod+Shift+E → murmur-type en        (voice → type English)"
+echo "  Mod+Shift+R → murmur-type ru        (voice → type Russian)"
+echo "  Mod+Shift+A → murmur-type translate  (voice → translate RU→EN popup)"
 echo ""
 echo "=== Done! ==="
-echo "Edit $SCRIPT_DIR/config.json with your Groq API key, then try: voice-type en"
+echo "Edit $SCRIPT_DIR/config.json with your Groq API key, then try: murmur-type en"

@@ -1,16 +1,28 @@
-# voice-type
+# murmur-type
 
-Voice-to-text toolkit for Wayland compositors (niri, sway, Hyprland). Speak into your mic, get text typed into the focused window — or translate Russian words to English with a popup dictionary.
+> *Murmur and it types.*
 
-Zero Python dependencies. Uses only the standard library.
+Voice-to-text and instant voice translation for Linux/Wayland. Press a hotkey, speak, press again — your words appear in the focused window. Powered by [Whisper](https://github.com/openai/whisper) via [Groq](https://groq.com/) (free, blazing fast). Single Python file, zero dependencies.
+
+Works with **niri**, **sway**, **Hyprland**, and any Wayland compositor.
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10+-green.svg)](https://www.python.org/)
+[![Wayland](https://img.shields.io/badge/Wayland-native-blueviolet.svg)](https://wayland.freedesktop.org/)
+[![Zero Dependencies](https://img.shields.io/badge/Dependencies-zero-orange.svg)](#)
+
+## Why murmur-type?
+
+Most Linux voice-to-text tools require heavy setups (local models, Python packages, system services). **murmur-type** is a single file with no dependencies — just Python stdlib, a Groq API key, and your Wayland compositor. It takes 30 seconds to set up.
 
 ## Features
 
-- **Voice → Type**: Press a hotkey, speak, press again — transcribed text is typed into the focused window (any editor, terminal, browser)
-- **Voice Translate (RU → EN)**: Say a Russian word or phrase, see the English translation with 3 context examples in a rofi popup. The translated word is **underlined** in each example sentence
-- **Vocabulary Integration**: Press Enter in the translation popup to save the word as a flashcard to your vocabulary app (optional)
-- **Multi-language**: Separate hotkeys for English and Russian transcription
-- **Toggle design**: One hotkey starts recording, same hotkey stops and processes — no daemon needed
+- **Voice → Type** — speak in any language, text appears in the focused window (VSCode, terminal, browser, anywhere)
+- **Voice Translate** — say a word in one language, see the translation + 3 context examples in a [rofi](https://github.com/davatorium/rofi) popup with the word **underlined** in each sentence
+- **Webhook Integration** — press Enter in the popup to save translations to any REST API (flashcard apps, Notion, Anki, custom backends)
+- **Multi-language** — separate hotkeys per language, or auto-detect
+- **Toggle design** — one hotkey starts recording, same hotkey stops and processes. No daemon, no background service
+- **Single file** — one Python script, stdlib only. No pip, no venv, no Docker
 
 ## How It Works
 
@@ -22,7 +34,7 @@ Zero Python dependencies. Uses only the standard library.
 
 Translate mode:
 ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────┐    ┌──────────┐
-│ Mic      │───→│ Whisper  │───→│ LLM      │───→│ rofi │───→│ App API  │
+│ Mic      │───→│ Whisper  │───→│ LLM      │───→│ rofi │───→│ Webhook  │
 │ (hotkey) │    │ (STT)    │    │ (translate)│   │ popup│    │ (save)   │
 └──────────┘    └──────────┘    └──────────┘    └──────┘    └──────────┘
 ```
@@ -75,8 +87,8 @@ sudo pacman -S python pipewire wtype rofi libnotify
 
 ```bash
 # Clone the repo
-git clone https://github.com/AStepanov/voice-type.git
-cd voice-type
+git clone https://github.com/Skippia/murmur-type.git
+cd murmur-type
 
 # Run the installer
 ./install.sh
@@ -86,7 +98,7 @@ nano config.json
 ```
 
 The installer:
-- Creates a symlink `~/.local/bin/voice-type` → `voice-type.py`
+- Creates a symlink `~/.local/bin/murmur-type` → `murmur-type.py`
 - Copies `config.example.json` → `config.json` (if not exists)
 - Checks that all dependencies are installed
 
@@ -94,14 +106,14 @@ The installer:
 
 ```bash
 # 1. Clone anywhere
-git clone https://github.com/AStepanov/voice-type.git ~/voice-type
+git clone https://github.com/Skippia/murmur-type.git ~/murmur-type
 
 # 2. Create config
 cp config.example.json config.json
 # Edit config.json — at minimum set "api_key"
 
 # 3. Symlink to PATH
-ln -s ~/voice-type/voice-type.py ~/.local/bin/voice-type
+ln -s ~/murmur-type/murmur-type.py ~/.local/bin/murmur-type
 
 # 4. Make sure ~/.local/bin is in your PATH
 ```
@@ -148,26 +160,26 @@ Add these to your compositor config. Examples below for different compositors:
 
 ```kdl
 binds {
-    Mod+Shift+E  hotkey-overlay-title="Voice-to-text (English)"   { spawn "voice-type" "en"; }
-    Mod+Shift+R  hotkey-overlay-title="Voice-to-text (Russian)"   { spawn "voice-type" "ru"; }
-    Mod+Shift+A  hotkey-overlay-title="Voice translate (RU → EN)"  { spawn "voice-type" "translate"; }
+    Mod+Shift+E  hotkey-overlay-title="Voice-to-text (English)"   { spawn "murmur-type" "en"; }
+    Mod+Shift+R  hotkey-overlay-title="Voice-to-text (Russian)"   { spawn "murmur-type" "ru"; }
+    Mod+Shift+A  hotkey-overlay-title="Voice translate (RU → EN)"  { spawn "murmur-type" "translate"; }
 }
 ```
 
 ### sway (`~/.config/sway/config`)
 
 ```
-bindsym $mod+Shift+e exec voice-type en
-bindsym $mod+Shift+r exec voice-type ru
-bindsym $mod+Shift+a exec voice-type translate
+bindsym $mod+Shift+e exec murmur-type en
+bindsym $mod+Shift+r exec murmur-type ru
+bindsym $mod+Shift+a exec murmur-type translate
 ```
 
 ### Hyprland (`~/.config/hypr/hyprland.conf`)
 
 ```
-bind = $mainMod SHIFT, E, exec, voice-type en
-bind = $mainMod SHIFT, R, exec, voice-type ru
-bind = $mainMod SHIFT, A, exec, voice-type translate
+bind = $mainMod SHIFT, E, exec, murmur-type en
+bind = $mainMod SHIFT, R, exec, murmur-type ru
+bind = $mainMod SHIFT, A, exec, murmur-type translate
 ```
 
 ## Usage
@@ -212,8 +224,8 @@ This only affects traffic to Groq's API IPs (`172.64.149.20`, `104.18.38.236`). 
 ## File Structure
 
 ```
-voice-type/
-├── voice-type.py          # Main script (single file, stdlib only)
+murmur-type/
+├── murmur-type.py          # Main script (single file, stdlib only)
 ├── config.json            # Your config (gitignored)
 ├── config.example.json    # Config template
 ├── install.sh             # Installer script
@@ -298,7 +310,7 @@ If your API requires logging in first to get a JWT token:
 
 How the auth flow works:
 
-1. On first request, voice-type sends a POST to `auth.url` with `auth.body`
+1. On first request, murmur-type sends a POST to `auth.url` with `auth.body`
 2. Extracts the JWT token from the response using `token_path` (dot notation — e.g., `"data.token"` extracts `response.data.token`)
 3. Adds `Authorization: Bearer <token>` to the webhook request
 4. Caches the token in `.run/app_token` so subsequent calls skip the login

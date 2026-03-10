@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""voice-type — Voice-to-text for Wayland/niri.
+"""murmur-type — Voice-to-text for Wayland/niri.
 
 Modes:
-  voice-type en        — record → transcribe English → type into focused window
-  voice-type ru        — record → transcribe Russian → type into focused window
-  voice-type translate — record → transcribe Russian → translate to English → rofi popup
+  murmur-type en        — record → transcribe English → type into focused window
+  murmur-type ru        — record → transcribe Russian → type into focused window
+  murmur-type translate — record → transcribe Russian → translate to English → rofi popup
                          Select any line in rofi + Enter → save as vocabulary card
 """
 
@@ -67,7 +67,7 @@ def load_config():
 def notify(msg, urgency="normal", timeout=2500):
     subprocess.run(
         ["notify-send", "-u", urgency, "-t", str(timeout),
-         "-a", "voice-type", "voice-type", msg],
+         "-a", "murmur-type", "murmur-type", msg],
         capture_output=True,
     )
 
@@ -205,7 +205,7 @@ def transcribe_groq(config):
         headers={
             "Authorization": f"Bearer {config['api_key']}",
             "Content-Type": f"multipart/form-data; boundary={boundary}",
-            "User-Agent": "voice-type/1.0",
+            "User-Agent": "murmur-type/1.0",
         },
         method="POST",
     )
@@ -287,7 +287,7 @@ def translate_ru_to_en(config, russian_text):
         headers={
             "Authorization": f"Bearer {config['api_key']}",
             "Content-Type": "application/json",
-            "User-Agent": "voice-type/1.0",
+            "User-Agent": "murmur-type/1.0",
         },
         method="POST",
     )
