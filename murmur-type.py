@@ -489,7 +489,15 @@ def fire_webhook(config, word, translation):
 def type_text(text):
     if not text:
         return
-    subprocess.run(["wtype", "--", text])
+    old = subprocess.run(["wl-paste", "--no-newline"], capture_output=True)
+    subprocess.run(["wl-copy", "--", text])
+    subprocess.run([
+        "wtype", "-M", "ctrl", "-M", "shift",
+        "-P", "v", "-p", "v",
+        "-m", "shift", "-m", "ctrl",
+    ])
+    time.sleep(0.15)
+    subprocess.run(["wl-copy", "--", old.stdout])
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────
