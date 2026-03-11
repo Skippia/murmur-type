@@ -4,7 +4,7 @@
 Modes:
   murmur-type en        — record → transcribe English → type into focused window
   murmur-type ru        — record → transcribe Russian → type into focused window
-  murmur-type translate — record → transcribe Russian → translate to English → rofi popup
+  murmur-type translate — record → transcribe → auto-detect language → translate (RU↔EN) → rofi popup
                          Select any line in rofi + Enter → save as vocabulary card
 """
 
@@ -248,33 +248,44 @@ def transcribe(config):
 
 # ── Translation via Groq LLM ─────────────────────────────────────────────────
 
-def translate_ru_to_en(config, russian_text):
-    """Translate Russian text to English with example contexts for display.
-    Returns dict {word, contextSentences, contextTranslations} or None."""
-    word_count = len(russian_text.split())
+def _is_cyrillic(text):
+    """Check if text is predominantly Cyrillic."""
+    cyrillic = sum(1 for c in text if '\u0400' <= c <= '\u04FF')
+    latin = sum(1 for c in text if 'a' <= c.lower() <= 'z')
+    return cyrillic > latin
+
+
+def translate_text(config, text):
+    """Translate text between Russian and English (auto-detects direction).
+    Returns dict {word, contextSentences, contextTranslations, source_lang} or None."""
+    is_ru = _is_cyrillic(text)
+    source_lang = "ru" if is_ru else "en"
+    source_label = "Russian" if is_ru else "English"
+    target_label = "English" if is_ru else "Russian"
+    word_count = len(text.split())
 
     if word_count <= 3:
         prompt = (
-            f'Translate the Russian word/phrase "{russian_text}" to English.\n'
+            f'Translate the {source_label} word/phrase "{text}" to {target_label}.\n'
             f'Respond with ONLY valid JSON, no markdown, no code fences:\n'
-            f'{{"word": "english translation",'
+            f'{{"word": "{target_label.lower()} translation",'
             f' "contextSentences": ["sentence 1", "sentence 2", "sentence 3"],'
-            f' "contextTranslations": ["перевод 1", "перевод 2", "перевод 3"]}}\n'
-            f'Each context sentence must use the English word in a different real-world context.\n'
-            f'Each contextTranslation is the Russian translation of the corresponding sentence.'
+            f' "contextTranslations": ["translation 1", "translation 2", "translation 3"]}}\n'
+            f'Each context sentence must use the {target_label} word in a different real-world context.\n'
+            f'Each contextTranslation is the {source_label} translation of the corresponding sentence.'
         )
     else:
         prompt = (
-            f'Translate this Russian text to English.\n'
+            f'Translate this {source_label} text to {target_label}.\n'
             f'Respond with ONLY valid JSON, no markdown, no code fences:\n'
-            f'{{"word": "english translation"}}\n'
-            f'Text: "{russian_text}"'
+            f'{{"word": "{target_label.lower()} translation"}}\n'
+            f'Text: "{text}"'
         )
 
     payload = json.dumps({
         "model": config.get("translate_model", "llama-3.3-70b-versatile"),
         "messages": [
-            {"role": "system", "content": "You are a concise Russian-English translator. Always respond with valid JSON only. No markdown, no code fences, no extra text."},
+            {"role": "system", "content": f"You are a concise {source_label}-{target_label} translator. Always respond with valid JSON only. No markdown, no code fences, no extra text."},
             {"role": "user", "content": prompt},
         ],
         "temperature": 0.3,
@@ -301,7 +312,11 @@ def translate_ru_to_en(config, russian_text):
                 if raw.endswith("```"):
                     raw = raw[:-3]
                 raw = raw.strip()
-            return json.loads(raw)
+            parsed = json.loads(raw)
+            parsed["source_lang"] = source_lang
+            if "word" in parsed:
+                parsed["word"] = parsed["word"].rstrip(".")
+            return parsed
     except (json.JSONDecodeError, KeyError, IndexError) as e:
         notify(f"Translation parse error: {e}", "critical")
         return None
@@ -331,13 +346,20 @@ def _underline_word(sentence, word):
     return pattern.sub(lambda m: f"<u>{m.group()}</u>", escaped)
 
 
-def show_translation_rofi(russian_text, data):
+def show_translation_rofi(source_text, data):
     """Show translation in rofi. Returns True if user pressed Enter (save card), False on Escape."""
     word = data.get("word", "").lower()
+    source_lang = data.get("source_lang", "ru")
+
+    if source_lang == "ru":
+        src_flag, tgt_flag = "🇷🇺", "🇬🇧"
+    else:
+        src_flag, tgt_flag = "🇬🇧", "🇷🇺"
+
     lines = [
-        f"🇷🇺  {_pango_escape(russian_text)}",
+        f"{src_flag}  {_pango_escape(source_text)}",
         "",
-        f"🇬🇧  <b>{_pango_escape(word)}</b>",
+        f"{tgt_flag}  <b>{_pango_escape(word)}</b>",
     ]
 
     contexts = data.get("contextSentences", [])
@@ -542,16 +564,21 @@ def main():
 
         if mode == "translate":
             notify("Translating...", "low")
-            data = translate_ru_to_en(config, text)
+            data = translate_text(config, text)
             if data:
-                english_word = data.get("word", "")
+                translated = data.get("word", "")
+                source_lang = data.get("source_lang", "ru")
                 user_wants_save = show_translation_rofi(text, data)
 
                 if user_wants_save and config.get("webhook"):
                     notify("Saving...", "low")
-                    ok = fire_webhook(config, english_word.lower(), text.lower())
+                    if source_lang == "ru":
+                        en_word, ru_word = translated.lower(), text.lower()
+                    else:
+                        en_word, ru_word = text.lower(), translated.lower()
+                    ok = fire_webhook(config, en_word, ru_word)
                     if ok:
-                        notify(f"Card saved: {english_word}", "low")
+                        notify(f"Card saved: {translated}", "low")
             else:
                 notify(f"Heard: {text}\n(translation failed)", "critical")
         else:
@@ -563,8 +590,8 @@ def main():
     else:
         os.makedirs(RUN_DIR, exist_ok=True)
         if arg == "translate":
-            save_mode("translate", "ru")
-            notify("Recording (RU → EN)...", "low")
+            save_mode("translate", "")
+            notify("Recording (RU ↔ EN)...", "low")
         else:
             save_mode("type", arg)
             label = {"en": "EN", "ru": "RU"}.get(arg, arg.upper())
