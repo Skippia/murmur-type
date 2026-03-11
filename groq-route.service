@@ -5,7 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/home/skippia/_global-scripts_/voice-type/groq-route.sh
+ExecStart=/home/skippia/_global-scripts_/murmur-type/groq-route.sh
 RemainAfterExit=yes
 
 [Install]

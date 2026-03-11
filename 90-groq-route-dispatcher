@@ -1,0 +1,19 @@
+#!/bin/bash
+# NetworkManager dispatcher: re-add Groq API bypass routes when VPN connects.
+# Install: sudo cp this /etc/NetworkManager/dispatcher.d/ && sudo chmod 755 /etc/NetworkManager/dispatcher.d/90-groq-route-dispatcher
+
+IFACE="$1"
+ACTION="$2"
+
+# Trigger when any tun/utun interface comes up (Windscribe VPN)
+case "$IFACE" in
+    utun*|tun*|wg*) ;;
+    *) exit 0 ;;
+esac
+
+[ "$ACTION" = "up" ] || exit 0
+
+# Small delay to let Windscribe finish setting up its routing rules
+sleep 2
+
+/home/skippia/_global-scripts_/murmur-type/groq-route.sh

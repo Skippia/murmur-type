@@ -541,7 +541,7 @@ def main():
 
                 if user_wants_save and config.get("webhook"):
                     notify("Saving...", "low")
-                    ok = fire_webhook(config, english_word.lower(), text)
+                    ok = fire_webhook(config, english_word.lower(), text.lower())
                     if ok:
                         notify(f"Card saved: {english_word}", "low")
             else:
