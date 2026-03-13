@@ -277,8 +277,9 @@ def translate_text(config, text):
     else:
         prompt = (
             f'Translate this {source_label} text to {target_label}.\n'
-            f'Respond with ONLY valid JSON, no markdown, no code fences:\n'
-            f'{{"word": "{target_label.lower()} translation"}}\n'
+            f'Respond with ONLY valid JSON, no markdown, no code fences.\n'
+            f'Use exactly this structure: {{"word": "your {target_label.lower()} translation here"}}\n'
+            f'The "word" key MUST contain the full translated text.\n'
             f'Text: "{text}"'
         )
 
@@ -314,8 +315,20 @@ def translate_text(config, text):
                 raw = raw.strip()
             parsed = json.loads(raw)
             parsed["source_lang"] = source_lang
+            # LLMs sometimes use alternative key names instead of "word",
+            # especially for long text translations — normalize to "word"
+            if not parsed.get("word"):
+                for alt_key in ("translation", "text", "translated_text", "result"):
+                    if parsed.get(alt_key):
+                        parsed["word"] = parsed[alt_key]
+                        break
             if "word" in parsed:
+                if not isinstance(parsed["word"], str):
+                    parsed["word"] = str(parsed["word"])
                 parsed["word"] = parsed["word"].rstrip(".")
+            if not parsed.get("word"):
+                notify(f"Translation returned empty result", "critical")
+                return None
             return parsed
     except (json.JSONDecodeError, KeyError, IndexError) as e:
         notify(f"Translation parse error: {e}", "critical")
@@ -344,6 +357,31 @@ def _underline_word(sentence, word):
     # Case-insensitive replace, preserving original case
     pattern = re.compile(re.escape(escaped_word), re.IGNORECASE)
     return pattern.sub(lambda m: f"<u>{m.group()}</u>", escaped)
+
+
+def _visible_len(pango_text):
+    """Return visible character count, stripping Pango markup tags."""
+    import re
+    return len(re.sub(r'<[^>]+>', '', pango_text))
+
+
+def _calc_rofi_width(lines, char_px=10, padding=80, max_pct=0.92):
+    """Calculate rofi window width in px based on the longest visible line."""
+    max_chars = max((_visible_len(line) for line in lines), default=40)
+    width = max_chars * char_px + padding
+    # Cap at max_pct of primary monitor width
+    try:
+        out = subprocess.run(
+            ["xrandr", "--query"], capture_output=True, text=True, timeout=2,
+        ).stdout
+        for ln in out.splitlines():
+            if " connected primary" in ln or " connected" in ln:
+                res = ln.split()[3 if "primary" in ln else 2].split("+")[0]
+                screen_w = int(res.split("x")[0])
+                return min(width, int(screen_w * max_pct))
+    except Exception:
+        pass
+    return min(width, 2000)
 
 
 def show_translation_rofi(source_text, data):
@@ -375,12 +413,13 @@ def show_translation_rofi(source_text, data):
 
     lines.append("⏎  Enter = save to vocabulary  |  Esc = dismiss")
 
+    width_px = _calc_rofi_width(lines)
     rofi_input = "\n".join(lines)
 
     result = subprocess.run(
         ["rofi", "-dmenu", "-p", "Translation",
          "-markup-rows", "-no-custom",
-         "-theme-str", "window {width: 900px;}",
+         "-theme-str", f"window {{width: {width_px}px;}}",
          "-theme-str", "listview {lines: " + str(len(lines)) + ";}",
          "-theme-str", "element {padding: 4px 12px;}"],
         input=rofi_input, capture_output=True, text=True,
