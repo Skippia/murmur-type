@@ -33,8 +33,15 @@ DEFAULT_CONFIG = {
     "api_key": "",
     "model": "whisper-large-v3",
     "language": "",
+    "translate_provider": "",
+    "translate_api_key": "",
     "translate_model": "llama-3.3-70b-versatile",
     "webhook": None,
+}
+
+TRANSLATE_ENDPOINTS = {
+    "groq": "https://api.groq.com/openai/v1/chat/completions",
+    "openrouter": "https://openrouter.ai/api/v1/chat/completions",
 }
 # Webhook config shape:
 # {
@@ -283,6 +290,10 @@ def translate_text(config, text):
             f'Text: "{text}"'
         )
 
+    t_provider = config.get("translate_provider") or config.get("provider", "groq")
+    t_api_key = config.get("translate_api_key") or config["api_key"]
+    t_endpoint = TRANSLATE_ENDPOINTS.get(t_provider, TRANSLATE_ENDPOINTS["groq"])
+
     payload = json.dumps({
         "model": config.get("translate_model", "llama-3.3-70b-versatile"),
         "messages": [
@@ -294,10 +305,10 @@ def translate_text(config, text):
     }).encode()
 
     req = urllib.request.Request(
-        "https://api.groq.com/openai/v1/chat/completions",
+        t_endpoint,
         data=payload,
         headers={
-            "Authorization": f"Bearer {config['api_key']}",
+            "Authorization": f"Bearer {t_api_key}",
             "Content-Type": "application/json",
             "User-Agent": "murmur-type/1.0",
         },

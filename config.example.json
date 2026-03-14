@@ -3,6 +3,8 @@
   "api_key": "gsk_YOUR_GROQ_API_KEY_HERE",
   "model": "whisper-large-v3",
   "language": "",
-  "translate_model": "llama-3.3-70b-versatile",
+  "translate_provider": "openrouter",
+  "translate_api_key": "sk-or-YOUR_OPENROUTER_API_KEY_HERE",
+  "translate_model": "google/gemini-3-flash-preview",
   "webhook": null
 }
